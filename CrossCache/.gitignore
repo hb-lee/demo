@@ -1,0 +1,8 @@
+build/
+pytho9n/
+*.a
+*.so
+*.patch
+lib/
+thirdparty
+infrastructure
