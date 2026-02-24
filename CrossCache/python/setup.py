@@ -15,7 +15,7 @@ setup(
             libraries=['ascendcl', 'torch_npu'],
         )
     ],
-    cmdclass={'build_ext', BuildExtension},
+    cmdclass={'build_ext': BuildExtension},
 )
 
 # python3 setup.py build_ext --inplace

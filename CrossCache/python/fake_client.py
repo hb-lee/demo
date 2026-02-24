@@ -7,7 +7,7 @@ import hashlib
 # import torch_npu
 # import ipckey_utils
 
-from utils.mq.import MessageQueueClient, MessagingFuture
+from utils.mq import MessageQueueClient, MessagingFuture
 from utils.protocol import (
     RequestType,
     to_register_payloads,
@@ -36,7 +36,7 @@ class FakeConnector(object):
         self.instance_id = 0  # means on npu 0
         # ipckey_utils.ipckey_init()
 
-    def dump_info(self, op)
+    def dump_info(self, op):
         print("======== %s ======" % op)
         print("nid:%d, wsize:%d rid:%d, nblock:%d, bsize:%d, dimsize:%d mname:%s" % (self.instance_id, self.world_size, self.rank_id, self.num_blocks, self.block_size,
         self.hidden_dim_size, self.model_name))
@@ -51,7 +51,7 @@ class FakeConnector(object):
         for tensor in kvcaches.values():
             k_bytes = ipckey_utils.ipckey_from_tensor(tensor[0])
             v_bytes = ipckey_utils.ipckey_from_tensor(tensor[1])
-            kv_caches_ptrs.append(k_bytes, v_bytes)
+            kv_caches_ptrs.append((k_bytes, v_bytes))
             print("K bytes, V bytes:", k_bytes, v_bytes)
         return kv_caches_ptrs, 64
 
@@ -59,10 +59,10 @@ class FakeConnector(object):
         print("Registering kv caches!")
         kv_caches_raw: dict[str, (torch.Tensor, torch.Tensor)] = {}
         for layer in ["layer1", "layer2"]:
-            tensor_k = torch.zeors(
+            tensor_k = torch.zeros(
                 [self.num_blocks, self.block_size, self.hidden_dim_size], dtype=torch.bfloat16
             )
-            tensor_v = torch.zeors(
+            tensor_v = torch.zeros(
                 [self.num_blocks, self.block_size, self.hidden_dim_size], dtype=torch.bfloat16
             )
             '''
@@ -79,7 +79,7 @@ class FakeConnector(object):
 
         kv_cache_ptrs, first_key_in_bytes = self.get_kv_cache_ptrs(kv_caches_raw)
         # kv_cache_ptrs, first_key_in_bytes = self.get_kv_cache_ptrs_npu(kv_caches_raw)
-        payloads = to_register_payloads(self.instance_id, self.world_size, self.rank_id, self.num_block, self.block_size,
+        payloads = to_register_payloads(self.instance_id, self.world_size, self.rank_id, self.num_blocks, self.block_size,
                         2, self.hidden_dim_size, first_key_in_bytes, self.model_name, kv_cache_ptrs)
         self.dump_info("Register")
         for item in kv_cache_ptrs:
@@ -93,7 +93,7 @@ class FakeConnector(object):
 
     def lookup(self):
         print("Lookup")
-        prompt_str1 = b"I am test case"
+        prompt_str1 = b"I am a test case"
         prompt_str2 = b"and I want be a client"
         block_hashes = [hashlib.sha256(prompt_str1).digest(), hashlib.sha256(prompt_str2).digest()]
         self.dump_info("Lookup")
@@ -106,14 +106,14 @@ class FakeConnector(object):
 
     def store(self):
         print("Store")
-        prompt_str1 = b"I am test case"
+        prompt_str1 = b"I am a test case"
         prompt_str2 = b"and I want be a client"
         keys = [hashlib.sha256(prompt_str1).digest(), hashlib.sha256(prompt_str2).digest()]
         block_ids = [1, 3, 4, 7]
         self.dump_info("Store")
         future = self.client.submit_request(
             RequestType.STORE,
-            to_store_payloads(self.instance_kd, keys, block_ids)
+            to_store_payloads(self.instance_id, keys, block_ids)
         )
         result = future.result()
         print("Store finished! result:%s" % str(result))
@@ -127,7 +127,7 @@ class FakeConnector(object):
         self.dump_info("Load")
         future = self.client.submit_request(
             RequestType.LOAD,
-            to_load_payloads(self.instance_kd, keys, block_ids)
+            to_load_payloads(self.instance_id, keys, block_ids)
         )
         result = future.result()
         print("Load finished! result:%s" % str(result))

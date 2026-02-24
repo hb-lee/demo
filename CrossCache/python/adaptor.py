@@ -31,12 +31,12 @@ def bytes_to_uint8_ptr(data: bytes):
 
 def striding_block_hashes(
     block_hashes: list[bytes],
-    block_in_chunk,
+    blocks_in_chunk,
 ) -> Iterable[bytes]:
-    ''' Striding the block hashes to get the block hashes for each chunk,
+    """ Striding the block hashes to get the block hashes for each chunk,
     For example, if blocks_in_chunk is 16, then we will get the block hashes
     for the 16th, 32nd, 48th, ... blocks.
-    '''
+    """
     return islice(block_hashes, blocks_in_chunk - 1, None, blocks_in_chunk)
 
 
@@ -89,7 +89,7 @@ class SchedulerAdapter(object):
         )
         self.lookup_futures[request_id] = future
 
-    def check_lookup_request(self, request_id: str) -> int | None:
+    def check_lookup_result(self, request_id: str) -> int | None:
         assert request_id in self.lookup_futures, (
             f"Lookup request for request_id={request_id} has not been submitted"
         )
@@ -103,11 +103,11 @@ class SchedulerAdapter(object):
         return result
 
     def cleanup_lookup_result(self, request_id: str) -> None:
-        '''
+        """
         Clean up lookup future for a finished request to prevent memory leak.
         Args:
             request_id: The ID of the finished request.
-        '''
+        """
         self.lookup_futures.pop(request_id, None)
 
     def num_blocks_per_chunk(self) -> int:
@@ -131,7 +131,7 @@ class WorkerAdapter(object):
         self.worker_id = kv_rank
 
         self.chunk_size = 256  # Cache chunk
-        self.blocks_in_block = self.chunk_size // vllm_block_size
+        self.blocks_in_chunk = self.chunk_size // vllm_block_size
 
         self.store_futures: dict[str, MessagingFuture] = {}
         self.load_futures: dict[str, MessagingFuture] = {}
@@ -142,7 +142,7 @@ class WorkerAdapter(object):
     def _block_hashes_to_keys(
         self, block_hashes: list[bytes]
     ):
-        '''Convert block hashes to IPC cache engine keys'''
+        """Convert block hashes to IPC cache engine keys"""
         s = striding_block_hashes(block_hashes, self.block_in_chunk)
         return [block_hash for block_hash in s]
 
@@ -203,7 +203,7 @@ class WorkerAdapter(object):
         for op in ops:
             keys.extend(self._block_hashes_to_keys(op.block_hashes))
             block_ids.extend(op.block_ids)
-        logger.debug("Worker store for req:%s, key:%s", request_ids, keys)
+        logger.debug("Worker store for req:%s, keys:%s", request_ids, keys)
         future = self.mq_client.submit_request(
             RequestType.STORE,
             to_store_payloads(self.instance_id, keys, block_ids),
@@ -246,7 +246,7 @@ class WorkerAdapter(object):
                     "store request for request_id=%s",
                     request_id,
                 )
-            logger.info("Store request for request_id:%s finished", request_id)
+            logger.info("Store request for request_id=%s finished", request_id)
 
         for request_id, (future, other_reqs) in self.load_futures.items():
             if not future.query():
@@ -265,7 +265,7 @@ class WorkerAdapter(object):
                 )
             logger.info("Retrieve request for request_id=%s finished", request_id)
 
-        logger.debug("store futures:%s load futures:%s, finished stores:%s prevfinished:%s", self.store_futures, self.load_futures, self.finished_stores, self.previously_finished)
+        logger.debug("store futures:%s, load futures:%s, finished stores:%s prevfinished:%s", self.store_futures, self.load_futures, self.finished_stores, self.previously_finished)
         # Remove the finished requests from the tracking dicts
         for request_id in finished_stores:
             self.store_futures.pop(request_id, None)
@@ -284,7 +284,7 @@ class WorkerAdapter(object):
 
         # Calculate the final finished stores
         ret_stores.update(self._update_and_get_finished_store())
-        logger.debug("store futures:%s, load futures:%s finished stores:%s prevfinished:%s", self.store_futures, self.load_futures, self.finished_stores, self.previously_finished)
+        logger.debug("store futures:%s, load futures:%s, finished stores:%s prevfinished:%s", self.store_futures, self.load_futures, self.finished_stores, self.previously_finished)
         ret_stores = ret_stores.intersection(finished_req_ids)
 
         logger.debug("ret_store:%s, finished_loads:%s", ret_stores,  finished_loads)

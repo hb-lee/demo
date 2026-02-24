@@ -21,7 +21,7 @@ const char *cop_to_str[] = {
     [CACHE_LOOKUP] = "LOOKUP",
     [CACHE_STORE] = "STORE",
     [CACHE_LOAD] = "LOAD",
-    [CACHE_GET_INFO] = "GET_INFO",
+    [CACHE_GET_INFO] = "GETINFO",
     [CACHE_MAX] = "UNKOWN",
 };
 
@@ -68,7 +68,7 @@ static int do_register(struct worker_context *wctx)
     struct worker_context *gwctx;
     int ret;
 
-    if (wctx->node_id != INVALID_NODE_ID)
+    if (wctx->node_id >= MAX_NODE_NUM)
         return -ERANGE;
 
     gwctx = &g_server.wcontext[wctx->node_id];
@@ -89,7 +89,7 @@ static int do_register(struct worker_context *wctx)
     gwctx->per_token_size = wctx->per_token_size;
     gwctx->num_blocks = wctx->num_blocks;
     gwctx->block_size = wctx->block_size;
-    ret = cache_register(gwctx);
+    ret = cache_register(wctx);
     if (ret)
         goto free_str;
 
@@ -127,7 +127,7 @@ static int do_lookup(uint8_t *keys, uint32_t key_num, uint32_t key_len,
             char *name, uint8_t world_size)
 {
     int hitted;
-    struct worker_context *wctx;
+    struct worker_context wctx;
 
     /* only pass to lookup model */
     wctx.model.model_name = name;
@@ -218,14 +218,14 @@ struct request_ctx {
 
 static void reply(int ret, void *id, int id_len, uint32_t uid)
 {
-    struct msg_response *rsp;
+    struct msg_response rsp;
 
     rsp.ok = (uint32_t)ret;
     rsp.uid = uid;
     /* zmq socket is not thread-safe */
     spinlock_lock(&g_server.rsp_lock);
-    zmq_send(g_server.rsp_socket, id, id_len, ZMQ_SNDMORE);
-    zmq_send(g_server.rsp_socket, &rsp, sizeof(struct msg_response), 0);
+    zmq_send(g_server.socket, id, id_len, ZMQ_SNDMORE);
+    zmq_send(g_server.socket, &rsp, sizeof(struct msg_response), 0);
     spinlock_unlock(&g_server.rsp_lock);
     log_debug("send response for uid:%u, ok:%d", rsp.uid, ret);
 }
@@ -241,7 +241,7 @@ static uint8_t dtype_to_bytes(uint8_t flag)
     return 2;
 }
 
-staitc void process_register(void *arg)
+static void process_register(void *arg)
 {
     struct request_ctx *ctx = (struct request_ctx *)arg;
     struct msg_header *msg = ctx->body;
@@ -251,7 +251,7 @@ staitc void process_register(void *arg)
     void *ptr = (void *)reg->data;
     int ret;
 
-    struct worker_context *wctx = {};
+    struct worker_context wctx = {};
     int dtype = dtype_to_bytes(reg->kv_flags);  /* assume bfloat takes 2 Bytes */
 
     if (msg->version != CACHE_VERSION) {
@@ -282,8 +282,8 @@ staitc void process_register(void *arg)
     wctx.model.hidden_dim_size = reg->hidden_dim_size;
 
     log_debug("[Register] nid:%u,rid:%u,nblocks:%u,bsize:%u,kbytes:%u,flags:%o,dtype:%d,per_token_size:%u,nlay:%u,mname:%s",
-        wctx.node_id, wctx.rank_id, reg->num_blocks, reg->block_size, reg->first_key_in_bytes,
-        reg->kv_flags, dtype, wctx.per_token_size, reg->num_layers, reg->model_name);
+        wctx.node_id, wctx.rank_id, wctx.num_blocks, wctx.block_size, reg->first_key_in_bytes,
+        reg->kv_flags, dtype, wctx.per_token_size, reg->num_layers, wctx.model.model_name);
     ret = do_register(&wctx);
 resp:
     reply(ret, ctx->id, ctx->id_len, msg->uid);
@@ -304,9 +304,9 @@ static void process_unregister(void *arg)
 static void process_lookup(void *arg)
 {
     struct request_ctx *ctx = (struct request_ctx *)arg;
-    struct msg_lookup *msg = ctx->body;
+    struct msg_header *msg = ctx->body;
     struct msg_common *comm = (struct msg_common *)msg->data;
-    uint8_t *keys = (uint8_t) *)comm->data;
+    uint8_t *keys = (uint8_t *)comm->data;
     struct msg_lookup *lkbody = (struct msg_lookup *)(keys + comm->keys_num * comm->key_len);
     uint8_t world_size = lkbody->world_size;
     char *model_name = (char *)lkbody->data;
@@ -323,10 +323,10 @@ static void process_load(void *arg)
     struct msg_header *msg = ctx->body;
     struct msg_common *comm = (struct msg_common *)msg->data;
     uint8_t *keys = (uint8_t *)comm->data;
-    uint8_t *bids = (uint8_t *)comm->data + (comm->keys_num * comm->key_len;
+    uint8_t *bids = (uint8_t *)comm->data + (comm->keys_num * comm->key_len);
     uint32_t bnum = (msg->len - sizeof(struct msg_common) - (bids - keys)) / sizeof(uint64_t);
 
-    log_debug("[Load] nid:%u,knum:%u,klen:%u,bnum:%u", msg_node_id, comm->keys_num, comm->key_len, bnum);
+    log_debug("[Load] nid:%u,knum:%u,klen:%u,bnum:%u", msg->node_id, comm->keys_num, comm->key_len, bnum);
     int ret = do_load(msg->node_id, keys, comm->key_len, comm->keys_num, (uint64_t *)bids, bnum);
     reply(ret, ctx->id, ctx->id_len, msg->uid);
     FREE_REQ_CTX(ctx);
@@ -338,10 +338,10 @@ static void process_store(void *arg)
     struct msg_header *msg = ctx->body;
     struct msg_common *comm = (struct msg_common *)msg->data;
     uint8_t *keys = (uint8_t *)comm->data;
-    uint8_t *bids = (uint8_t *)comm->data + (comm->keys_num * comm->key_len;
+    uint8_t *bids = (uint8_t *)comm->data + (comm->keys_num * comm->key_len);
     uint32_t bnum = (msg->len - sizeof(struct msg_common) - (bids - keys)) / sizeof(uint64_t);
 
-    log_debug("[Store] nid:%u,knum:%u,klen:%u,bnum:%u", msg_node_id, comm->keys_num, comm->key_len, bnum);
+    log_debug("[Store] nid:%u,knum:%u,klen:%u,bnum:%u", msg->node_id, comm->keys_num, comm->key_len, bnum);
     int ret = do_store(msg->node_id, keys, comm->key_len, comm->keys_num, (uint64_t *)bids, bnum);
     reply(ret, ctx->id, ctx->id_len, msg->uid);
     FREE_REQ_CTX(ctx);
@@ -412,7 +412,7 @@ int init_server_resource()
                 g_server.config.local_path);
 }
 
-void exit_server_resouce()
+void exit_server_resource()
 {
     cache_exit();
     threadpool_destroy(g_server.store_thp);
@@ -435,7 +435,7 @@ static struct option long_options[] =
     {"port", required_argument, 0, 'P'},
     {"cachedir", required_argument, 0, 1},
     {"chunksize", required_argument, 0, 2},
-    {0, 0, 0, 0}
+    {0, 0, 0, 0},
 };
 
 static void usage(int argc, char **argv)
@@ -462,9 +462,10 @@ static int cache_parse_options_cfg(int argc, char **argv)
         case 'P':
             g_server.config.port = strtoul(optarg, &endptr, 0);
             if (*endptr != '\0') {
-                fprintf(stderr, "Invalid port: %s\n", optarg);
+                fprintf(stderr, "invalid port: %s\n", optarg);
                 return -EINVAL;
             }
+            break;
         case 1:
             g_server.config.local_path = optarg;
             break;
@@ -483,7 +484,7 @@ static int cache_parse_options_cfg(int argc, char **argv)
     return 0;
 }
 
-int main(int argc, char **argv)
+int main(int argc, char *argv[])
 {
     cache_init_configure();
     int ret = cache_parse_options_cfg(argc, argv);
@@ -515,7 +516,7 @@ int main(int argc, char **argv)
         int rc = zmq_poll(items, 1, 1000);
         if (rc < 0) break;
         if (rc == 0) continue;
-        if (!items[0].revents & ZMQ_POLLIN)
+        if (!(items[0].revents & ZMQ_POLLIN))
             continue;
 
         zmq_msg_t id, body;
@@ -548,6 +549,6 @@ err:
     zmq_close(g_server.socket);
     zmq_ctx_destroy(g_server.context);
 exit:
-    exit_server_resouce();
+    exit_server_resource();
     return ret;
 }

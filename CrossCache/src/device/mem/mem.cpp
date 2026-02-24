@@ -95,7 +95,7 @@ void* MemAdaptor::OpenIPCKeys(uint8_t nid, uint16_t per_len, uint16_t num, void 
     for (i = 0; i < num; i++) {
         sprintf(shm, "/fakekv:%d", i);
         fd = shm_open(shm, O_CREAT | O_RDWR, 0666);
-        sys_assert(fd, > 0);
+        sys_assert(fd > 0);
         ftruncate(fd, 10 * 1024 * 1024); // 10M
         va = mmap(NULL, 10 * 1024 * 1024, PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
         log_debug("nid:%u, layer:%d,ori kptr:0x%llx,fake kvptr:%p,fake shmfile:%s,limit:10MB",
@@ -114,7 +114,7 @@ void MemAdaptor::CloseIPCKeys(void *daddr)
 int MemAdaptor::TransferKVCache(struct transfer_params *params)
 {
     int layerIdx, tokenIdx;
-    int64_t slot, *slotmapping;
+    int64_t slot, *slotmaping;
     uint32_t cpos, copy_len;
     uint64_t ppos, *key_ptrs, *val_ptrs;
     uint8_t *caches;
@@ -123,20 +123,20 @@ int MemAdaptor::TransferKVCache(struct transfer_params *params)
     caches = (uint8_t *)params->caches;
     key_ptrs = (uint64_t *)params->key_ptrs;
     val_ptrs = (uint64_t *)params->value_ptrs;
-    slotmapping = (int64_t *)params->slot_mapping;
+    slotmaping = (int64_t *)params->slot_mapping;
 
     /* move length for each epoch */
     copy_len = params->caches_element_size *params->hidden_dim_size;
     if (params->direction)
-        out_str = std::string("========== TO cache (uint: " + std::to_string(copy_len) +
+        out_str = std::string("========== TO cache (unit: " + std::to_string(copy_len) +
         ") ==========\n");
     else
-        out_str = std::string("========== FROM cache (uint: " + std::to_string(copy_len) +
+        out_str = std::string("========== FROM cache (unit: " + std::to_string(copy_len) +
         ") ==========\n");
-    for (layerIdx = 0; layerIdx < params->num_layers, layerIdx++) {
+    for (layerIdx = 0; layerIdx < params->num_layers; layerIdx++) {
         out_str += std::string("Layer:") + std::to_string(layerIdx) +
                 std::string(" [ ");
-        for (tokenIdx = 0; tokenIdx < params->num_tokens, tokenIdx++) {
+        for (tokenIdx = 0; tokenIdx < params->num_tokens; tokenIdx++) {
             /* copy key cache */
             cpos = layerIdx * params->num_tokens * copy_len
                 + tokenIdx * copy_len;
@@ -146,11 +146,11 @@ int MemAdaptor::TransferKVCache(struct transfer_params *params)
             if (params->direction) {
                 memcpy(caches + cpos, (uint8_t *)key_ptrs[layerIdx] + ppos, copy_len);
                 out_str += std::string("K:") + std::to_string(ppos) +
-                    std::string("->") + std::string(cpos) + std::string(" ");
+                    std::string("->") + std::to_string(cpos) + std::string(" ");
             } else {
                 memcpy((uint8_t *)key_ptrs[layerIdx] + ppos, caches + cpos, copy_len);
                 out_str += std::string("K:") + std::to_string(cpos) +
-                    std::string("->") + std::string(ppos) + std::string(" ");
+                    std::string("->") + std::to_string(ppos) + std::string(" ");
             }
             /* copy value cache if needed */
             if (val_ptrs) {
@@ -158,11 +158,11 @@ int MemAdaptor::TransferKVCache(struct transfer_params *params)
                 if (params->direction) {
                     memcpy(caches + cpos, (uint8_t *)val_ptrs[layerIdx] + ppos, copy_len);
                     out_str += std::string("V:") + std::to_string(ppos) +
-                        std::string("->") + std::string(cpos) + std::string(" ");
+                        std::string("->") + std::to_string(cpos) + std::string(" ");
                 } else {
                     memcpy((uint8_t *)val_ptrs[layerIdx] + ppos, caches + cpos, copy_len);
                     out_str += std::string("V:") + std::to_string(cpos) +
-                        std::string("->") + std::string(ppos) + std::string(" ");
+                        std::string("->") + std::to_string(ppos) + std::string(" ");
                 }
             }
         }

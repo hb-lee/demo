@@ -9,7 +9,7 @@
 
 typedef std::map<std::string, std::string> map_t;
 
-static bool fileToJson(const std::string& filepath, Json::Value& dst)
+static bool fileToJson(std::string& filepath, Json::Value& dst)
 {
     std::ifstream file(filepath);
     if (!file.is_open()) {
@@ -107,7 +107,7 @@ class Config
             if (iter == memDB.end())
                 return 0;
 
-            return (uint32_t)std::stoul(it->second);
+            return (uint32_t)std::stoi(iter->second);
         }
         
         static uint64_t GetU64(const char *key)
@@ -116,7 +116,7 @@ class Config
             if (iter == memDB.end())
                 return 0;
 
-            return (uint64_t)std::stoul(it->second);
+            return (uint64_t)std::stoul(iter->second);
         }
 
         static const char *GetString(const char *key)
@@ -125,11 +125,11 @@ class Config
             if (iter == memDB.end())
                 return NULL;
 
-            return it->second.c_str();
+            return iter->second.c_str();
         }
 };
 
-mem_t Config::memDB;
+map_t Config::memDB;
 
 int config_init(const char *file)
 {

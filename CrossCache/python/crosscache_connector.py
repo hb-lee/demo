@@ -49,7 +49,7 @@ def create_scheduler_adapter(
     zmq_context: zmq.Context,
     vllm_config: VllmConfig
 ) -> SchedulerAdapter:
-    # TODO: have a helper future to calculate the correct rank and
+    # TODO: have a helper function to calculate the correct rank and
     # world size for the MLA and other models
     return SchedulerAdapter(
         server_url,
@@ -66,7 +66,7 @@ def create_worker_adapter(
     zmq_context: zmq.Context,
     vllm_config: VllmConfig
 ) -> WorkerAdapter:
-    # TODO: have a helper future to calculate the correct rank and
+    # TODO: have a helper function to calculate the correct rank and
     # world size for the MLA and other models
     return WorkerAdapter(
         server_url,
@@ -258,7 +258,7 @@ class CacheRequestMetadata:
 
         Args:
             tracker: The request tracker to generate the metadata from.
-            blocks_in_chunk: the number of blocks in a LMCache data chunk
+            blocks_in_chunk: the number of blocks in a Cache data chunk
         """
         if not tracker.is_ready_for_retrieving():
             return None
@@ -272,7 +272,7 @@ class CacheRequestMetadata:
         end = tracker.num_cache_hit_blocks
         assert end % blocks_in_chunk == 0, (
             "The number of Cache hit blocks should be a multiple of the "
-            "number of blocks in a lmcache chunk. "
+            "number of blocks in a cache chunk. "
         )
         assert len(tracker.block_hashes) >= end, (
             "The number of block hashes should be greater than or equal to the "
@@ -297,7 +297,7 @@ class CacheRequestMetadata:
 class CacheConnectorMetadata(KVConnectorMetadata):
     def __init__(self):
         super().__init__()
-        self.requests: list[CacheConnectorMetadata] = []
+        self.requests: list[CacheRequestMetadata] = []
 
     def add_request_metadata(self, request_metadata: CacheRequestMetadata):
         self.requests.append(request_metadata)
@@ -353,7 +353,7 @@ class CrossCacheConnector(KVConnectorBase_V1):
             raise ValueError(f"Unknown KVConnectorRole: {self.role}")
         self.vllm_block_size = vllm_config.cache_config.block_size
 
-    #property
+    @property
     def role(self) -> KVConnectorRole:
         return self._role
 
@@ -374,7 +374,7 @@ class CrossCacheConnector(KVConnectorBase_V1):
         return self._connector_metadata
 
     def register_kv_caches(self, kv_caches: dict[str, torch.Tensor]):
-        logger.info("Registering kv caches!")
+        logger.info("Register kv caches!")
         self.worker_adapter.register(kv_caches)
         return
 
@@ -395,7 +395,7 @@ class CrossCacheConnector(KVConnectorBase_V1):
         self,
         layer_name: str,
         kv_layer: torch.Tensor,
-        attn_metadata: AttentionMetadata,
+        attn_metadata: "AttentionMetadata",
         **kwargs: Any,
     ) -> None:
         """
@@ -412,7 +412,8 @@ class CrossCacheConnector(KVConnectorBase_V1):
         """
         return
 
-    def start_load_kv(self,
+    def start_load_kv(
+        self,
         forward_context: "ForwardContext",
         **kwargs: Any
     ) -> None:
@@ -453,7 +454,7 @@ class CrossCacheConnector(KVConnectorBase_V1):
         if len(request_ids) > 0:
             self.worker_adapter.store_requests(request_ids, ops)
 
-   def get_finished(
+    def get_finished(
         self, finished_req_ids: set[str]
     ) -> tuple[set[str] | None, set[str] | None]:
         """
@@ -530,7 +531,7 @@ class CrossCacheConnector(KVConnectorBase_V1):
         self,
         request: "Request",
         blocks: "KVCacheBlocks",
-        num_external_tokens: int
+        num_external_tokens: int,
     ):
         logger.debug("enter update_state_after_alloc (external:%d)...", num_external_tokens)
         # NOTE: the `blocks` are NEW BLOCKS allocated for this request.
@@ -646,8 +647,7 @@ class CrossCacheConnector(KVConnectorBase_V1):
 
             # Update block ids
             new_block_ids = reformat_block_ids(cached_reqs.new_block_ids[idx])
-            if request_id not in cached_reqs.resumed_req_ids:
-                request_tracker.append_block_ids(new_block_ids)
+            request_tracker.append_block_ids(new_block_ids)
 
             # Update new scheduled tokens
             num_new_tokens = cached_reqs.num_computed_tokens[idx]

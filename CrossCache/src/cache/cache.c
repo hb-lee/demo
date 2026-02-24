@@ -49,7 +49,7 @@ struct cache_manager {
     int dirfd;
 };
 
-struct cache_manager *g_cache_mgr;
+struct cache_manager g_cache_mgr;
 
 struct model_rt_key {
     char *model_tag;    /* model unique tag, like model name */
@@ -102,7 +102,7 @@ static void rt_inc(void *args, hashlink_t *data)
 
 static int rt_dec(void *args, hashlink_t *data)
 {
-    struct model_rt_entrry *entry =
+    struct model_rt_entry *entry =
         container_of(data, struct model_rt_entry, node);
     int32_t ref = atomic_s32_dec(&entry->ref);
 
@@ -207,7 +207,7 @@ struct batch_ctx {
 
 static inline void _batch_done_cb(int ret, void *arg)
 {
-    struct batch_ctx *ctx = (struct batch_ctx *)ar4g;
+    struct batch_ctx *ctx = (struct batch_ctx *)arg;
 
     if (ret < 0)
         ctx->ret = ret;
@@ -357,7 +357,7 @@ static uint64_t *create_slot_mapping(uint32_t num_blocks, uint32_t block_size)
     printf("======== SLOT MAPPING <%u,%u> ========\n", num_blocks, block_size);
     for (i = 0; i < num_blocks; i++) {
         for (j = 0; j < block_size; j++) {
-            printf("%u ", smapping[i * block_size + j]);
+            printf("%lu ", smapping[i * block_size + j]);
         }
         printf("\n");
     }
@@ -373,7 +373,7 @@ static void *get_slot_mapping(uint8_t nid, uint64_t *smapping, uint64_t *bids, u
 {
     uint32_t i, tokens_sm = bnum * block_size * sizeof(uint64_t);
     void *sm_haddr, *sm_daddr;
-    uint64_t *slot_mapping, bid:
+    uint64_t *slot_mapping, bid;
 
     sm_haddr = malloc(tokens_sm);
     if (!sm_haddr)
@@ -408,7 +408,7 @@ static int transfer_with_device(bool direction, struct pipeline_ctx *pctx,
     params.caches = (memobj->addr - entry->host_pinned_addr) + entry->dev_addr;
     params.caches_h = memobj->addr;
     log_debug("transfer cache haddr:%p, daddr:%p", params.caches_h, params.caches);
-    params.key_ptrs = pctx->k_ptrs;
+    params.keys_ptrs = pctx->k_ptrs;
     params.value_ptrs = pctx->v_ptrs;
     params.page_buffer_size = pctx->block_size * pctx->total_block_num;
     params.slot_mapping = get_slot_mapping(pctx->node_id, entry->smapping, pctx->block_ids,
@@ -544,6 +544,7 @@ static int cache_op(struct worker_context *wctx, uint8_t *keys,
         pctx->key = (struct cache_key *)(keys + kpos);
         pctx->status = PIPELINE_START;
         pctx->block_ids = bids + (i * blocks_per_chunk);
+        pctx->block_num = blocks_per_chunk;
         pctx->cb_data = &ctx;
         pctx->num_layers = wctx->model.num_layers;
         pctx->element_size = wctx->model.element_size;
@@ -635,7 +636,7 @@ int cache_register(struct worker_context *wctx)
     entry->key.tp_size = wctx->world_size;
     entry->key.tp_id = wctx->rank_id;
     /* create lookup hashmap for each sharing domain */
-    ret = hashmap_search(LKUP_MAP_SCALES, key_cmp, key_hash, &entry->lkup_map);
+    ret = hashmap_create(LKUP_MAP_SCALES, key_cmp, key_hash, &entry->lkup_map);
     if (ret)
         goto free_tag;
     /* alloc pinned address for each sharing domain */
@@ -743,13 +744,13 @@ int cache_lookup(struct worker_context *wctx, uint8_t *keys,
     return pos;
 }
 
-int cache_store(struct worker_context *wctx, uint8_t *key,
+int cache_store(struct worker_context *wctx, uint8_t *keys,
             uint32_t key_len, uint64_t *bids, uint32_t bnum)
 {
     return cache_op(wctx, keys, key_len, bids, bnum, OP_STORE);
 }
 
-int cache_load(struct worker_context *wctx, uint8_t *key,
+int cache_load(struct worker_context *wctx, uint8_t *keys,
             uint32_t key_len, uint64_t *bids, uint32_t bnum)
 {
     return cache_op(wctx, keys, key_len, bids, bnum, OP_LOAD);
@@ -780,7 +781,7 @@ int cache_init(uint32_t chunk_size, uint64_t pool_size, const char *root_dir)
         ret = mkdir(root_dir, S_IRWXU | S_IRGRP | S_IXGRP);
         sys_assert(ret == 0);
     }
-    g_cache_mgr.dirfd = open(root_dir, O_RDONBLY|O_DIRECTORY);
+    g_cache_mgr.dirfd = open(root_dir, O_RDONLY|O_DIRECTORY);
     sys_assert(g_cache_mgr.dirfd > 0);
     return 0;
 }

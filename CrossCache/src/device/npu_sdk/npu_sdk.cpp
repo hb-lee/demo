@@ -2,7 +2,7 @@
 #include "device.h"
 
 #include "log.h"
-#include <string.h>
+#include <string>
 
 #include "acl/acl.h"
 #include <cstdio>
@@ -153,7 +153,7 @@ void NPUSDKAdaptor::CloseIPCKeys(void *daddr)
 int NPUSDKAdaptor::TransferKVCache(struct transfer_params *params)
 {
     int layerIdx, tokenIdx;
-    int64_t slot, *slotmapping;
+    int64_t slot, *slotmaping;
     uint32_t cpos, copy_len;
     uint64_t ppos, *key_ptrs, *val_ptrs;
     uint8_t *caches;
@@ -166,23 +166,23 @@ int NPUSDKAdaptor::TransferKVCache(struct transfer_params *params)
         return -1;
     }
 
-    caches = (uint8_t *)params->caches;
-    key_ptrs = (uint64_t *)params->key_ptrs;
+    caches = (uint8_t *)params->caches_h;
+    key_ptrs = (uint64_t *)params->keys_ptrs;
     val_ptrs = (uint64_t *)params->value_ptrs;
-    slotmapping = (int64_t *)params->slot_mapping;
+    slotmaping = (int64_t *)params->slot_mapping;
 
     /* move length for each epoch */
     copy_len = params->caches_element_size *params->hidden_dim_size;
     if (params->direction)
-        out_str = std::string("========== TO cache (uint: " + std::to_string(copy_len) +
+        out_str = std::string("========== TO cache (unit: " + std::to_string(copy_len) +
         ") ==========\n");
     else
-        out_str = std::string("========== FROM cache (uint: " + std::to_string(copy_len) +
+        out_str = std::string("========== FROM cache (unit: " + std::to_string(copy_len) +
         ") ==========\n");
-    for (layerIdx = 0; layerIdx < params->num_layers, layerIdx++) {
+    for (layerIdx = 0; layerIdx < params->num_layers; layerIdx++) {
         out_str += std::string("Layer:") + std::to_string(layerIdx) +
                 std::string(" [ ");
-        for (tokenIdx = 0; tokenIdx < params->num_tokens, tokenIdx++) {
+        for (tokenIdx = 0; tokenIdx < params->num_tokens; tokenIdx++) {
             /* copy key cache */
             cpos = layerIdx * params->num_tokens * copy_len
                 + tokenIdx * copy_len;
@@ -190,7 +190,7 @@ int NPUSDKAdaptor::TransferKVCache(struct transfer_params *params)
             slot = slotmapping[tokenIdx];
             ppos = slot * copy_len;
             if (params->direction) {
-                err = aclrtMemcpy(caches + cpos, (uint8_t *)key_ptrs[layerIdx] + ppos, copy_len, ACL_MEMCPY_DEVICE_TO_HOST);
+                err = aclrtMemcpy(caches + cpos, copy_len, (uint8_t *)key_ptrs[layerIdx] + ppos, copy_len, ACL_MEMCPY_DEVICE_TO_HOST);
                 if (err != ACL_SUCCESS) {
                     log_error("device(%u) aclrt memcpy failed, err:%d", params->devid, err);
                     return -1;
@@ -198,7 +198,7 @@ int NPUSDKAdaptor::TransferKVCache(struct transfer_params *params)
                 out_str += std::string("K:") + std::to_string(ppos) + std::string("-") + std::to_string(ppos + copy_len) +
                     std::string("->") + std::string(cpos) + std::string("-") + std::to_string(cpos + copy_len) + std::string(" ");
             } else {
-                err = aclrtMemcpy((uint8_t *)key_ptrs[layerIdx] + ppos, caches + cpos, copy_len, ACL_MEMCPY_HOST_TO_DEVICE);
+                err = aclrtMemcpy((uint8_t *)key_ptrs[layerIdx] + ppos, copy_len, caches + cpos, copy_len, ACL_MEMCPY_HOST_TO_DEVICE);
                 if (err != ACL_SUCCESS) {
                     log_error("device(%u) aclrt memcpy failed, err:%d", params->devid, err);
                     return -1;
@@ -216,7 +216,7 @@ int NPUSDKAdaptor::TransferKVCache(struct transfer_params *params)
                         return -1;
                     }
                     out_str += std::string("V:") + std::to_string(ppos) + std::string("-") + std::to_string(ppos + copy_len) +
-                        std::string("->") + std::string(cpos) + std::string("-") + std::string(cpos + copy_len) + std::string(" ");
+                        std::string("->") + std::to_string(cpos) + std::string("-") + std::to_string(cpos + copy_len) + std::string(" ");
                 } else {
                     err = aclrtMemcpy((uint8_t *)val_ptrs[layerIdx] + ppos, caches + cpos, copy_len);
                     if (err != ACL_SUCCESS) {
@@ -224,7 +224,7 @@ int NPUSDKAdaptor::TransferKVCache(struct transfer_params *params)
                         return -1;
                     }
                     out_str += std::string("V:") + std::to_string(cpos) + std::string("-") + std::string(cpos + copy_len) +
-                        std::string("->") + std::string(ppos) + std::string("-") + std::string(ppos + copy_len) + std::string(" ");
+                        std::string("->") + std::to_string(ppos) + std::string("-") + std::to_string(ppos + copy_len) + std::string(" ");
                 }
             }
         }

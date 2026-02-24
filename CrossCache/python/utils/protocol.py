@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0
 
-import ctypes:
+import ctypes
 import struct
 from typing import Any
 
@@ -86,7 +86,7 @@ def to_register_payloads(
     model_name: str,
     kvcache_ptrs: list[tuple[bytes, ...]]    # [(kptr, vptr)...]
   ) -> list[Any]:
-    return [instance_id, world_size, rank_id, num_block, block_size, key_in_bytes,
+    return [instance_id, world_size, rank_id, num_blocks, block_size, key_in_bytes,
             hidden_dim_size, first_key_in_bytes, model_name, kvcache_ptrs]
 
 
@@ -118,9 +118,9 @@ def to_load_payloads(
 def encode_message(
     request_type: RequestType,
     request_id: int,
-    reqeust_payloads: list[Any],
+    request_payloads: list[Any],
   ) -> bytes | None:
-    if request_type == RequestType.REQISTER_KV_CACHE:
+    if request_type == RequestType.REGISTER_KV_CACHE:
         total_size = ctypes.sizeof(MsgHeader) + ctypes.sizeof(MsgRegister)
         data_pos = total_size
         instance_id = request_payloads[0]
@@ -135,7 +135,7 @@ def encode_message(
         encode_name = model_name.encode('utf-8') + b'\0'
         kv_cache_ptrs = request_payloads[9]
         num_layers = len(kv_cache_ptrs)
-        k_or_v = 0 if len(kv_cache_ptrs) == 1 else 1
+        k_or_v = 0 if len(kv_cache_ptrs[0]) == 1 else 1
         # kv pointers + name len
         total_size += len(encode_name)
         total_size += (first_key_in_bytes * num_layers * (k_or_v + 1))
@@ -167,7 +167,7 @@ def encode_message(
             # for NON MLA, packed val ptrs
             for kv_cache_ptr in kv_cache_ptrs:
                 buffer[data_pos:data_pos + first_key_in_bytes] = kv_cache_ptr[1]
-                dat_pos += first_key_in_bytes
+                data_pos += first_key_in_bytes
         assert data_pos == total_size, (
             "The total size should be equal to the filled size"
             f"But got {data_pos} and {total_size}"

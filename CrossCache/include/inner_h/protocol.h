@@ -38,6 +38,7 @@ struct msg_register {
     uint8_t num_layers;
     uint8_t kv_flags;
     uint32_t num_blocks;
+    uint32_t block_size;
     uint32_t hidden_dim_size;
     uint32_t first_key_in_bytes;
     uint8_t data[]; /* ${name},k1,k2,k3,v1,v2,v3... */

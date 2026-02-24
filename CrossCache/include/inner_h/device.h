@@ -13,7 +13,7 @@ extern "C" {
 struct transfer_params {
     void *caches, *caches_h;        /* buffer in memory side (Pinned Memory) */
 
-    void DEV_PTR *key_ptrs;
+    void DEV_PTR *keys_ptrs;
     void DEV_PTR *value_ptrs;
     uint64_t page_buffer_size;  /* buffer size in token (num_pages * page_size) in vllm */
     void DEV_PTR *slot_mapping;
