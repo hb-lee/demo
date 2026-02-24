@@ -1,0 +1,200 @@
+#include "kernel_operator.h"
+#include <stdio.h>
+#include <string>
+#include <stdexcept>
+
+template <typename scalar_t, typename slot_t> 
+class MultiLayerPagedKVCopyV2 {
+    using local_scalar_t = AscendC::LocalTensor<scalar_t>;
+
+public:
+    __aicore__ inline MultiLayerPagedKVCopyV2() {}
+
+    __aicore__ inline void init(const int64_t hiddenDims, const int32_t numLayers, const int64_t pageBuffSize,
+                                const int32_t numTokensChunk, const int64_t perLoopBuffSize,
+                                const int32_t maxTokensPerLoop, const bool page2L, AscendC::TPipe *pipe)
+    {
+        this->pipe_ = pipe;
+        this->numLayers_ = numLayers;
+        this->hiddenDims_ = hiddenDims;
+        this->pageBuffSize_ = pageBuffSize;
+        this->numTokensChunk_ = numTokensChunk;
+        this->maxTokensPerLoop_ = maxTokensPerLoop;
+        this->perLoopBuffSize_ = perLoopBuffSize;
+        this->page2L_ = page2L;
+        
+        // we assume this is taken care of in the kernel launch.
+        this->pipe_->InitBuffer(pagedTokenQue_, 2, this->perLoopBuffSize_);
+    }
+
+    __aicore__ inline void _page2LTransfer(__gm__ uint8_t *pagedKVCaches, __gm__ uint8_t* cacheTensor, 
+                                           __gm__ uint8_t *slotmappings, const int cacheIdx, 
+                                           const int layerIdx, const int32_t startTokensIdx, 
+                                           const int32_t endTokensIdx, 
+                                           const int32_t actualTokensPerInnerLoop) {
+        // get the slotmappings 
+        __gm__ slot_t *slotmappingPtr = reinterpret_cast<__gm__ slot_t*>(slotmappings);
+        
+        // 1. alloc per layer per loop cache buffer
+        local_scalar_t perLayerSingleCacheBuffer = this->pagedTokenQue_.template AllocTensor<scalar_t>();
+        int64_t slot;      
+        int64_t tmpPagedOffset;
+        int64_t localTensorTokenOffset;
+        // 2. copy num tokens
+        for (int64_t tokenIdx = startTokensIdx; tokenIdx < endTokensIdx; tokenIdx++) {
+            slot = static_cast<int64_t>(slotmappingPtr[tokenIdx]);
+            tmpPagedOffset = slot * this->hiddenDims_;
+            localTensorTokenOffset = (tokenIdx - startTokensIdx) * this->hiddenDims_;
+            AscendC::DataCopy(perLayerSingleCacheBuffer[localTensorTokenOffset], this->pagedTokenGlobal_[tmpPagedOffset], 
+                              this->hiddenDims_);
+        }
+
+        // 3. enque & deque
+        pagedTokenQue_.EnQue(perLayerSingleCacheBuffer);
+        perLayerSingleCacheBuffer = pagedTokenQue_.DeQue<scalar_t>();
+        
+        // 4. copy singleCache buffer to the right global idx
+        int64_t cacheTensorLayerOffset = cacheIdx * this->numLayers_ * this->numTokensChunk_ * this->hiddenDims_ + 
+                                         layerIdx * this->numTokensChunk_ * this->hiddenDims_ +
+                                         startTokensIdx * this->hiddenDims_;
+        AscendC::DataCopy(this->lmcBufferGlobal_[cacheTensorLayerOffset], perLayerSingleCacheBuffer, 
+                          actualTokensPerInnerLoop * this->hiddenDims_);
+
+        // 5. Free
+        pagedTokenQue_.FreeTensor(perLayerSingleCacheBuffer);
+    }
+
+    __aicore__ inline void _L2PageTransfer(__gm__ uint8_t *pagedKVCaches, __gm__ uint8_t* cacheTensor, 
+                                           __gm__ uint8_t *slotmappings, const int cacheIdx, 
+                                           const int layerIdx, const int32_t startTokensIdx, 
+                                           const int32_t endTokensIdx, 
+                                           const int32_t actualTokensPerInnerLoop) {
+        // get the slotmappings 
+        __gm__ slot_t *slotmappingPtr = reinterpret_cast<__gm__ slot_t*>(slotmappings);
+        
+        // 1. alloc per layer per cache buffer
+        local_scalar_t perLayerSingleCacheBuffer = this->pagedTokenQue_.template AllocTensor<scalar_t>();
+        
+        // 2. copy the L buffer to local
+        int64_t cacheTensorLayerOffset = cacheIdx * this->numLayers_ * this->numTokensChunk_ * this->hiddenDims_ +
+                                         layerIdx * this->numTokensChunk_ * this->hiddenDims_ +
+                                         startTokensIdx * this->hiddenDims_;
+        
+        AscendC::DataCopy(perLayerSingleCacheBuffer, this->lmcBufferGlobal_[cacheTensorLayerOffset], 
+                          actualTokensPerInnerLoop * this->hiddenDims_);
+        
+        // 3. enque & deque
+        pagedTokenQue_.EnQue(perLayerSingleCacheBuffer);
+        perLayerSingleCacheBuffer = pagedTokenQue_.DeQue<scalar_t>();
+
+        // 4. now this is in ub
+        int64_t slot;
+        int64_t tmpPagedOffset;
+        int64_t localTensorTokenOffset;
+        // copy per token into paged
+        for (int64_t tokenIdx = startTokensIdx; tokenIdx < endTokensIdx; tokenIdx++) {
+            slot = static_cast<int64_t>(slotmappingPtr[tokenIdx]);
+            tmpPagedOffset = slot * this->hiddenDims_;
+            localTensorTokenOffset = (tokenIdx - startTokensIdx) * this->hiddenDims_;
+            AscendC::DataCopy(this->pagedTokenGlobal_[tmpPagedOffset], perLayerSingleCacheBuffer[localTensorTokenOffset], 
+                              this->hiddenDims_);
+        }
+
+        // 5. free
+        pagedTokenQue_.FreeTensor(perLayerSingleCacheBuffer);
+    }
+
+    __aicore__ inline void processLayerCache(__gm__ uint8_t *pagedKVCaches, __gm__ uint8_t* cacheTensor, 
+                                             __gm__ uint8_t *slotmappings, const int cacheIdx, 
+                                             const int layerIdx, const bool page2L) 
+    {
+
+        // set global buffer for pagedKVCaches at layer boundary
+        // its a pointer with the GM addr space, that point to another GM addr space
+        __gm__ uint8_t * __gm__ *pagedLayerKVCachesPtr = reinterpret_cast<__gm__ uint8_t* __gm__ *>(pagedKVCaches);
+        
+        // getting the right ptr to the paged kvcache layer
+        __gm__ uint8_t *pagedLayerKVCaches = nullptr;
+
+        pagedLayerKVCaches = pagedLayerKVCachesPtr[layerIdx];
+        // For both page2L and L2Page, we copy per token via and to the pagedcache.
+        this->pagedTokenGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ scalar_t*>(pagedLayerKVCaches),
+                                                this->hiddenDims_);
+        
+        // For the cache tensor, since per layer is contiguous, we do contiguous copy.
+        this->lmcBufferGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ scalar_t*>(cacheTensor),
+                                               this->numTokensChunk_*this->hiddenDims_);
+
+        // loop over tokens per loop
+        int32_t startTokensIdx;
+        int32_t endTokensIdx;
+        int32_t actualTokensPerInnerLoop;
+
+        for (startTokensIdx = 0; startTokensIdx < this->numTokensChunk_; startTokensIdx += this->maxTokensPerLoop_) {
+            endTokensIdx = startTokensIdx + this->maxTokensPerLoop_;
+            endTokensIdx = min(endTokensIdx, this->numTokensChunk_);
+            actualTokensPerInnerLoop = endTokensIdx - startTokensIdx;
+
+            if (page2L) {
+                this->_page2LTransfer(pagedKVCaches, cacheTensor, slotmappings, cacheIdx, layerIdx, 
+                                     startTokensIdx, endTokensIdx, actualTokensPerInnerLoop);
+            } else {
+                this->_L2PageTransfer(pagedKVCaches, cacheTensor, slotmappings, cacheIdx, layerIdx, 
+                                     startTokensIdx, endTokensIdx, actualTokensPerInnerLoop);
+            }
+        }
+    }
+
+private:
+    AscendC::TPipe *pipe_;
+    AscendC::TQueBind<AscendC::QuePosition::VECIN, AscendC::QuePosition::VECOUT, 2> pagedTokenQue_;
+
+    // [layers * [kvs, numPages * pagedSize, heads*headsize]]
+    AscendC::GlobalTensor<scalar_t> pagedTokenGlobal_;
+    // [kvs, layers, numTokensChunk, heads*headsize]
+    AscendC::GlobalTensor<scalar_t> lmcBufferGlobal_;
+    int32_t numLayers_; // num layers
+    int64_t pageBuffSize_; // pages * pageSize
+    int64_t hiddenDims_; // heads * headSize
+    int32_t numTokensChunk_; // num tokens in the cache tensor chunk
+    int32_t maxTokensPerLoop_; // num tokens per inner loop for transferring
+    int64_t perLoopBuffSize_; // buffer size in innerloop within UB
+    bool page2L_; // true, from pagedTensor to LMC, false otherwise
+};
+
+extern "C" __global__ __aicore__ void multi_layer_kv_transfer_kernel_v2(
+                __gm__ uint8_t* pagedK, __gm__ uint8_t* pagedV, __gm__ uint8_t* dstCacheTensor, __gm__ uint8_t* slotmappings,
+                const int64_t hiddenDims, const int32_t numLayers, const int64_t pageBuffSize, const int32_t numTokensChunk,
+                const int64_t perLoopBuffer, const int32_t maxTokensPerLoop, const bool page2L)
+{
+    AscendC::TPipe pipe;
+    MultiLayerPagedKVCopyV2<bfloat16_t, int64_t> op{};
+    int32_t bIdx = AscendC::GetBlockIdx();
+    int32_t launchedCores = AscendC::GetBlockNum();
+    int32_t layersPerCore = (numLayers + launchedCores - 1) / launchedCores;
+    int32_t startLayersIdx = bIdx * layersPerCore;
+    int32_t endLayersIdx = min(numLayers, startLayersIdx + layersPerCore);
+    op.init(phiddenDims, numLayers, pageBuffSize, numTokensChunk, perLoopBuffer, maxTokensPerLoop, page2L, &pipe);
+    for (int32_t layerIdx = startLayersIdx; layerIdx < endLayersIdx; layerIdx++) {
+        op.processLayerCache(pagedK, dstCacheTensor, slotmappings, 0, layerIdx, page2L);
+        if (pagedV == nullptr)
+            continue;
+        op.processLayerCache(pagedV, dstCacheTensor, slotmappings, 1, layerId, page2L);
+    }
+}
+
+namespace kvcache_ops {
+
+extern void multi_layer_kv_transfer_kernel_v2(uint32_t blockDim, void *stream,
+                            uint8_t *pagedK, uint8_t *pagedV, uint8_t *dstCacheTensor, uint8_t *slotmappings,
+                            const int64_t hiddenDims, const int32_t numLayers,
+                            const int64_t pageBuffSize, const int32_t numTokensChunk,
+                            const int64_t perLoopBuffer, const int32_t maxTokensPerLoop,
+                            const bool page2L)
+{
+    multi_layer_kv_transfer_kernel_v2<<<blockDim, nullptr, stream>>>(pagedK, pagedV, dstCacheTensor,
+                                    slotmappings, hiddenDims, numLayers, pageBuffSize, numTokensChunk,
+                                    perLoopBuffer, maxTokensPerLoop, page2L);
+}
+
+}  // namespace kvcache_ops
