@@ -1,7 +1,7 @@
 #***********************************************************
 #***********************************************************
 
-set(LIBZMQ_DIR "{THIRD_PARTY}/libzmq")
+set(LIBZMQ_DIR "${THIRD_PARTY}/libzmq")
 
 include_directories(${PROJECT_SOURCE_DIR}/include/inner_h)
 include_directories(${PROJECT_SOURCE_DIR}/include/cache)
@@ -34,7 +34,7 @@ add_subdirectory(device)
 
 if (DEFINED NPU)
     add_link_options(
-        "LINKER:-rpath-link,/workerspace/lhb/.local/lib/python3.11/site-packages/torch.libs"
+        "LINKER:-rpath-link,/workspace/lhb/.local/lib/python3.11/site-packages/torch.libs"
     )
 endif()
 
@@ -57,7 +57,7 @@ if (DEFINED NPU)
                 python3.11
                 dl
                 c10
-                torch_cpu
+                torch_npu
                 torch_python
                 ascendcl
                 platform
@@ -75,7 +75,6 @@ elseif(DEFINED NPUSDK)
                 cache
                 device
                 "-Wl,--no-whole-archive"
-                python3.11
                 ascendcl
                 zmq
                 infra)

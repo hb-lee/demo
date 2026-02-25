@@ -11,6 +11,7 @@ KV_DTYPE_4BYTE = 0x08
 
 CACHE_VERSION = 1
 
+
 def get_kvflag(k_or_v: int, key_in_bytes: int) ->ctypes.c_uint8:
     kv_flag = k_or_v & K_V_MASK
     if key_in_bytes == 1:
@@ -19,12 +20,14 @@ def get_kvflag(k_or_v: int, key_in_bytes: int) ->ctypes.c_uint8:
         return ctypes.c_uint8(kv_flag | KV_DTYPE_4BYTE)
     return ctypes.c_uint8(kv_flag | KV_DTYPE_2BYTE)
 
+
 class RequestType(ctypes.c_uint8):
     REGISTER_KV_CACHE = 0
     UNREGISTER_KV_CACHE = 1
     LOOKUP = 2
     STORE = 3
     LOAD = 4
+
 
 class MsgHeader(ctypes.Structure):
     _pack_ = 1
@@ -50,6 +53,7 @@ class MsgRegister(ctypes.Structure):
         ("hidden_dim_size", ctypes.c_uint32),
         ("first_key_in_bytes", ctypes.c_uint32),
     ]
+
 
 class MsgCommon(ctypes.Structure):
     _pack_ = 1

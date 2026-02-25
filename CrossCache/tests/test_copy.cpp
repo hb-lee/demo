@@ -11,7 +11,7 @@
 #include "acl/acl.h"
 #include <tiling/platform/platform_ascendc.h>
 
-namespace kvccache_ops {
+namespace kvcache_ops {
 void multi_layer_kv_transfer_kernel_v2(uint32_t blockDim, void *stream,
                             uint8_t *pagedK, uint8_t *pagedV, uint8_t *dstCacheTensor, uint8_t *slotmappings,
                             const int64_t hiddenDims, const int32_t numLayers,
@@ -20,7 +20,7 @@ void multi_layer_kv_transfer_kernel_v2(uint32_t blockDim, void *stream,
                             const bool page2L);
 }
 
-#define MIN(a, b) (((a) < (b)) > (a) : (b))
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
 
 #define CHECK_ACL(x)                                                \
     do {                                                            \
@@ -63,7 +63,7 @@ static uint64_t *create_slot_mapping(uint32_t num_blocks, uint32_t block_size)
         return NULL;
 
     uint32_t i, j;
-    for (i = 0; i < num_blocks, i++)
+    for (i = 0; i < num_blocks; i++)
         for (j = 0; j < block_size; j++)
             smapping[i * block_size + j] = j + i * block_size;
 
@@ -156,6 +156,13 @@ static int parse_options(int argc, char **argv)
                 return -EINVAL;
             }
             break;
+        case 'c':
+            g_config.chunk_size = strtoul(optarg, &endptr, 0);
+            if (*endptr != '\0') {
+                fprintf(stderr, "invalid chunk size:%s\n", optarg);
+                return -EINVAL;
+            }
+            break;
         case 'H':
             g_config.hidden_size = strtoul(optarg, &endptr, 0);
             if (*endptr != '\0') {
@@ -193,6 +200,10 @@ static int parse_options(int argc, char **argv)
         fprintf(stderr, "chunk size needs multiple of block size\n");
         return -EINVAL;
     }
+    if (g_config.num_layers < 1) {
+        fprintf(stderr, "layer is smaller than 2\n");
+        return -EINVAL;
+    }
 
     return 0;
 }
@@ -217,9 +228,9 @@ static void copy_worker(int layerId, uint64_t *ptrs, uint64_t *_kptr, uint64_t *
             cpos += num_layers * chunk_size * hidden_size * element_size;
             CHECK_ACL(aclrtMemcpy((char *)chost + cpos, copy_len, (char *)(_vptr[layerId]) + ppos, copy_len, ACL_MEMCPY_DEVICE_TO_HOST));
         } else {
-            CHECK_ACL(aclrtMemcpy((char *)(_kptr[layerId]) + ppos, copy_len, (char *)chost + cpos, copy_len, ACL_MEMCPY_HOST_TO_DEVICE));
+            CHECK_ACL(aclrtMemcpy((char *)_kptr[layerId] + ppos, copy_len, (char *)chost + cpos, copy_len, ACL_MEMCPY_HOST_TO_DEVICE));
             cpos += num_layers * chunk_size * hidden_size * element_size;
-            CHECK_ACL(aclrtMemcpy((char *)(_vptr[layerId]) + ppos, copy_len, (char *)chost + cpos, copy_len, ACL_MEMCPY_HOST_TO_DEVICE));
+            CHECK_ACL(aclrtMemcpy((char *)_vptr[layerId] + ppos, copy_len, (char *)chost + cpos, copy_len, ACL_MEMCPY_HOST_TO_DEVICE));
         }
     }
 }
@@ -235,7 +246,7 @@ int main(int argc, char *argv[])
     init_configure();
     int ret = parse_options(argc, argv);
     if (ret) {
-        fprintf(stderr, "Try '%s --help' for more information. \n", argv[0]);
+        fprintf(stderr, "Try '%s --help' for more information.\n", argv[0]);
         return ret;
     }
     uint32_t num_blocks = g_config.num_blocks;
@@ -250,7 +261,7 @@ int main(int argc, char *argv[])
     uint32_t c_block_size = 2 * num_layers * hidden_size * element_size * chunk_size;
     int ptrs_size = num_layers * sizeof(uint64_t);
     // allocate transfer block
-    int bnum = chunk_size / block_size * g_config.num_blocks;
+    int bnum = chunk_size / block_size * g_config.num_chunks;
     int _size = bnum * sizeof(int);
     int *block_ids = (int *)malloc(_size);
     ret = fill_unique_rand(0, num_blocks, bnum, block_ids);
@@ -291,8 +302,8 @@ int main(int argc, char *argv[])
     for (int i = 0; i < num_layers; ++i) {
         CHECK_ACL(aclrtMalloc(&k, k_buffer_size, ACL_MEM_MALLOC_HUGE_FIRST));
         CHECK_ACL(aclrtMalloc(&v, k_buffer_size, ACL_MEM_MALLOC_HUGE_FIRST));
-        *((uint64_t)kptrs + i) = (uint64_t)k;
-        *((uint64_t)vptrs + i) = (uint64_t)v;
+        *((uint64_t *)kptrs + i) = (uint64_t)k;
+        *((uint64_t *)vptrs + i) = (uint64_t)v;
     }
     uint64_t *_kptr = (uint64_t *)kptrs;
     uint64_t *_vptr = (uint64_t *)vptrs;
@@ -320,7 +331,7 @@ int main(int argc, char *argv[])
         int bid = block_ids[i];
         memcpy(ptrs + i * block_size, gsm + bid * block_size, block_size * sizeof(uint64_t));
 #ifdef _DEBUG
-        printf("Generate slot mapping for bid %lu", bid);
+        printf("Generate slot mapping for bid %lu: ", bid);
         for (int j = 0; j < block_size; j++) {
             printf("%lu ", ptrs[i * block_size + j]);
         }
@@ -358,9 +369,9 @@ int main(int argc, char *argv[])
     }
     int32_t maxTokensPerLoop = (ubSize / baseBuffSize) - 1;
     maxTokensPerLoop = static_cast<int32_t>(std::min(maxTokensPerLoop, static_cast<int32_t>(chunk_size)));
-    int64_t totalPerLoopBuffer = static<int64_t>(maxTokensPerLoop) * baseBuffSize;
+    int64_t totalPerLoopBuffer = static_cast<int64_t>(maxTokensPerLoop) * baseBuffSize;
     if ((int64_t)ubSize < totalPerLoopBuffer) {
-        printf("(device:%u) per Loop Buffer size:%ld exceed ubsize:%lu\n", deviceId, totalPerLoopBuffer,ubSize);
+        printf("(device:%u) per Loop buffer size:%ld exceed ubsize:%lu\n", deviceId, totalPerLoopBuffer,ubSize);
         return -1;
     }
 
@@ -370,7 +381,7 @@ int main(int argc, char *argv[])
     printf("(device:%u) kptrs:0x%llx,vptrs:0x%llx,caches:0x%llx,slot:0x%llx,hdim:%d,psize:%ld,tokens:%d,loopBuffer:%d,perToken:%d,basebuffersize:%u,ubsize:%ld\n",
         deviceId, (void *)kdevptrs, (void *)vdevptrs, (void *)cdev, (void *)smdev, hidden_size, page_buffer_size, chunk_size, singlePerLoopBuffer, maxTokensPerLoop, baseBuffSize, ubSize);
 #endif
-    kvccache_ops::multi_layer_kv_transfer_kernel_v2(aiv_num, stream, (uint8_t *)kdevptrs, (uint8_t *)vdevptrs, (uint8_t *)cdev,
+    kvcache_ops::multi_layer_kv_transfer_kernel_v2(aiv_num, stream, (uint8_t *)kdevptrs, (uint8_t *)vdevptrs, (uint8_t *)cdev,
                             (uint8_t *)smdev, hidden_size, num_layers, page_buffer_size, chunk_size,
                             singlePerLoopBuffer, maxTokensPerLoop, false);
     CHECK_ACL(aclrtSynchronizeStream(stream));
@@ -382,7 +393,7 @@ int main(int argc, char *argv[])
     printf("UPDATE cache content[first 10 bytes]:\t%s\n", out);
 
     // copy OUT
-    kvccache_ops::multi_layer_kv_transfer_kernel_v2(aiv_num, stream, (uint8_t *)kdevptrs, (uint8_t *)vdevptrs, (uint8_t *)cdev,
+    kvcache_ops::multi_layer_kv_transfer_kernel_v2(aiv_num, stream, (uint8_t *)kdevptrs, (uint8_t *)vdevptrs, (uint8_t *)cdev,
                             (uint8_t *)smdev, hidden_size, num_layers, page_buffer_size, chunk_size,
                             singlePerLoopBuffer, maxTokensPerLoop, true);
     CHECK_ACL(aclrtSynchronizeStream(stream));
@@ -394,7 +405,7 @@ int main(int argc, char *argv[])
     int slot;
     copy_len = element_size * hidden_size;
     memcpy(out, chost, 10);
-    printf("REAQD cache content[first 10 bytes]:\t%s\n", out);
+    printf("READ cache content[first 10 bytes]:\t%s\n", out);
     // copy IN
 #ifdef _MULTITHREAD
     std::vector<std::thread> thds_in;
@@ -453,14 +464,14 @@ int main(int argc, char *argv[])
                 + tokenId * hidden_size * element_size;
             slot = ptrs[tokenId];
             ppos = slot * copy_len;
-            CHECK_ACL(aclrtMemcpy((char *)chost + cpos, copy_len, (char *)_kptr[layerId] + ppos, copy_len, ACL_MEMCPY_HOST_TO_DEVICE));
+            CHECK_ACL(aclrtMemcpy((char *)chost + cpos, copy_len, (char *)(_kptr[layerId]) + ppos, copy_len, ACL_MEMCPY_DEVICE_TO_HOST));
 #ifdef _DEBUG
             printf("COPY RANGE K dev[%u-%u]-->host[%u-%u]\n", ppos, ppos + copy_len, cpos, cpos + copy_len);
             total_len += copy_len;
 #endif
             // copy value
             cpos += num_layers * chunk_size * hidden_size * element_size;
-            CHECK_ACL(aclrtMemcpy((char *)chost + cpos, copy_len, (char *)_vptr[layerId] + ppos, copy_len, ACL_MEMCPY_HOST_TO_DEVICE));
+            CHECK_ACL(aclrtMemcpy((char *)chost + cpos, copy_len, (char *)(_vptr[layerId]) + ppos, copy_len, ACL_MEMCPY_DEVICE_TO_HOST));
 #ifdef _DEBUG
             printf("COPY RANGE V dev[%u-%u]-->host[%u-%u]\n", ppos, ppos + copy_len, cpos, cpos + copy_len);
             total_len += copy_len;
@@ -473,7 +484,7 @@ int main(int argc, char *argv[])
 #endif
 #endif
     gettimeofday(&tv, NULL);
-    end = (unsigned long)tv.tv_sec * 1000000UL + tv.tv_sec;
+    end = (unsigned long)tv.tv_sec * 1000000UL + tv.tv_usec;
 
     printf("=======>CopyOut Done!\n");
     memcpy(out, chost, 10);
@@ -487,7 +498,7 @@ int main(int argc, char *argv[])
         printf("[FAIL] After Transfer, not the same!!!\n");
     }
 
-    printf("---------------- Total cost: %u (us) ---------------\n", end - start);
+    printf("---------------- Total cost: %lu (us) ---------------\n", end - start);
 
     CHECK_ACL(aclrtHostUnregister(chost));
     CHECK_ACL(aclrtFreeHost(chost));

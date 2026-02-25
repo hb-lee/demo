@@ -27,10 +27,10 @@ public:
     virtual void
         CloseIPCKeys(void *daddr) = 0;
 
-    vitual int
+    virtual int
         TransferKVCache(struct transfer_params *params) = 0;
 
-    vitual void
+    virtual void
         Reset(uint8_t nid) = 0;
 };
 

@@ -44,7 +44,7 @@ public:
     void CloseIPCKeys(void *daddr);
     int TransferKVCache(struct transfer_params *params);
     void Reset(uint8_t nid);
-}
+};
 
 void* NPUAdaptor::AllocPinnedPtr(uint8_t nid, uint64_t size, unsigned int flags, void **daddr)
 {
@@ -53,7 +53,7 @@ void* NPUAdaptor::AllocPinnedPtr(uint8_t nid, uint64_t size, unsigned int flags,
     aclError err;
 
     if (size % 4096) {
-        log_error("nid(%u) alloc addr size should be 4k-aligned, now is:%lu", size);
+        log_error("device(%u) alloc pin addr size should be 4k-aligned, now is:%lu", size);
         return NULL;
     }
     err = aclrtSetDevice(nid);
@@ -64,7 +64,7 @@ void* NPUAdaptor::AllocPinnedPtr(uint8_t nid, uint64_t size, unsigned int flags,
     /* Allocate the locked memory */
     addr = mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
     if (addr == MAP_FAILED) {
-        log_error("device(%u) alloc pin addr failed, size:%u, errno:%d", nid, size, errno);
+        log_error("device(%u) alloc pin addr failed, size:%lu, errno:%d", nid, size, errno);
         return NULL;
     }
     buf = (char *)addr;
@@ -130,7 +130,7 @@ void NPUAdaptor::UnWrapperPtr(void *daddr)
 
 void* NPUAdaptor::OpenIPCKeys(uint8_t nid, uint16_t per_len, uint16_t num, void *data)
 {
-    void *addr;
+    void *addr, *daddr;
     aclError err;
     int i, pos, size = num * sizeof(uint64_t);
 
@@ -160,6 +160,13 @@ void* NPUAdaptor::OpenIPCKeys(uint8_t nid, uint16_t per_len, uint16_t num, void 
         *((uint64_t *)addr + i) = (uint64_t)devptr;
     }
     /* move dev addr array to device memory */
+    err = aclrtMalloc(&daddr, size, ACL_MEM_MALLOC_NORMAL_ONLY);
+    if (err != ACL_SUCCESS) {
+        log_error("device(%u) aclrt malloc failed, size:%lu, err:%d", nid, size, err);
+        free(addr);
+        return NULL;
+    }
+    log_debug("device(%u) aclrt alloc size:%d done(0x%llx).", nid, size, daddr);
     err = aclrtMemcpy(daddr, size, addr, size, ACL_MEMCPY_HOST_TO_DEVICE);
     if (err != ACL_SUCCESS) {
         log_error("device(%u) aclrt copy(%lu) failed, err:%d", nid, size, err);
@@ -205,30 +212,31 @@ int NPUAdaptor::TransferKVCache(struct transfer_params *params)
     const char *socName = aclrtGetSocName();
     auto ascendcPlatform = platform_ascendc::PlatformAscendCManager::GetInstance(socName);
     uint64_t ubSize;
-    ascendcPlatform->GetCoreMemSize(platform_ascendc::CoreMemType::UB, uBsize);
+    ascendcPlatform->GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
     /* set default AI core number */
     uint32_t aiv_num = (uint32_t)std::min(num_layers, 4);
 
-    int32_t numBuffsDev = 2;
-    int64_t baseBuffSize = numBuffsDev * hidden_dims * params->caches_element_size;
+    int32_t numBuffsOnDev = 2;
+    int64_t baseBuffSize = numBuffsOnDev * hidden_dims * params->caches_element_size;
     if ((int64_t)ubSize < baseBuffSize) {
-        printf("(device:%u) ubSize is too small for single token, ubSize:%lu, bs:%ld\n", deviceId, ubSize, baseBuffSize);
+        log_error("(device:%u) ubSize is too small for single token, ubSize:%lu, bs:%ld", params->devid, ubSize, baseBuffSize);
         aclrtDestroyStream(stream);
         return -1;
     }
     int32_t maxTokensPerLoop = (ubSize / baseBuffSize) - 1;
-    maxTokensPerLoop = static_cast<int32_t>(std::min(maxTokensPerLoop, static_cast<int32_t>(chunk_size)));
-    int64_t totalPerLoopBuffer = static<int64_t>(maxTokensPerLoop) * baseBuffSize;
+    maxTokensPerLoop = static_cast<int32_t>(std::min(maxTokensPerLoop, static_cast<int32_t>(num_tokens)));
+    int64_t totalPerLoopBuffer = static_cast<int64_t>(maxTokensPerLoop) * baseBuffSize;
     if ((int64_t)ubSize < totalPerLoopBuffer) {
-        printf("(device:%u) per Loop Buffer size:%ld exceed ubsize:%lu\n", deviceId, totalPerLoopBuffer,ubSize);
+        log_error("(device:%u) per Loop buffer size:%ld exceed ubsize:%lu", params->devid, totalPerLoopBuffer,ubSize);
+        aclrtDestroyStream(stream);
         return -1;
     }
 
-    // using double bufs mean we actually want to allocate half of this per round.
+    // using double buffs mean we actually want to allocate half of this per round.
     int64_t singlePerLoopBuffer = totalPerLoopBuffer / numBuffsOnDev;
     log_debug("(device:%u) ops param:kptrs:0x%llx,slotmapping:0x%llx,caches:0x%llx,hdim:%d,psize:%ld,tokens:%d,loopBuffer:%d,perToken:%d,basebuffersize:%u,ubsize:%ld",
-        params->devid, (void *)key_ptrs, (void *)slot_mapping_ptr, (void *)caches, hidden_dims, page_buffer_size, num_tokens, singlePerLoopBuffer, maxTokensPerLoop, basebuffersize, ubSize);
-    kvccache_ops::multi_layer_kv_transfer_kernel_v2(aiv_num, stream, key_ptrs, value_ptrs, caches,
+        params->devid, (void *)key_ptrs, (void *)slot_mapping_ptr, (void *)caches, hidden_dims, page_buffer_size, num_tokens, singlePerLoopBuffer, maxTokensPerLoop, baseBufferSize, ubSize);
+    kvcache_ops::multi_layer_kv_transfer_kernel_v2(aiv_num, stream, key_ptrs, value_ptrs, caches,
                             slot_mapping_ptr, hidden_dims, num_layers, page_buffer_size, num_tokens,
                             singlePerLoopBuffer, maxTokensPerLoop, direction);
     err = aclrtSynchronizeStream(stream);
@@ -244,7 +252,7 @@ int NPUAdaptor::TransferKVCache(struct transfer_params *params)
 
 void NPUAdaptor::Reset(uint8_t nid)
 {
-    log_debug("debug npu:%u", nid);
+    log_debug("reset npu:%u", nid);
     aclrtResetDeviceForce(nid);
 }
 

@@ -110,13 +110,13 @@ public:
     {
 
         // set global buffer for pagedKVCaches at layer boundary
-        // its a pointer with the GM addr space, that point to another GM addr space
-        __gm__ uint8_t * __gm__ *pagedLayerKVCachesPtr = reinterpret_cast<__gm__ uint8_t* __gm__ *>(pagedKVCaches);
+        // its a pointer within the GM addr space, that point to another GM addr space
+        __gm__ uint8_t * __gm__ *pagedKVCachesPtr = reinterpret_cast<__gm__ uint8_t* __gm__ *>(pagedKVCaches);
         
         // getting the right ptr to the paged kvcache layer
         __gm__ uint8_t *pagedLayerKVCaches = nullptr;
 
-        pagedLayerKVCaches = pagedLayerKVCachesPtr[layerIdx];
+        pagedLayerKVCaches = pagedKVCachesPtr[layerIdx];
         // For both page2L and L2Page, we copy per token via and to the pagedcache.
         this->pagedTokenGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ scalar_t*>(pagedLayerKVCaches),
                                                 this->hiddenDims_);
@@ -174,12 +174,12 @@ extern "C" __global__ __aicore__ void multi_layer_kv_transfer_kernel_v2(
     int32_t layersPerCore = (numLayers + launchedCores - 1) / launchedCores;
     int32_t startLayersIdx = bIdx * layersPerCore;
     int32_t endLayersIdx = min(numLayers, startLayersIdx + layersPerCore);
-    op.init(phiddenDims, numLayers, pageBuffSize, numTokensChunk, perLoopBuffer, maxTokensPerLoop, page2L, &pipe);
+    op.init(hiddenDims, numLayers, pageBuffSize, numTokensChunk, perLoopBuffer, maxTokensPerLoop, page2L, &pipe);
     for (int32_t layerIdx = startLayersIdx; layerIdx < endLayersIdx; layerIdx++) {
         op.processLayerCache(pagedK, dstCacheTensor, slotmappings, 0, layerIdx, page2L);
         if (pagedV == nullptr)
             continue;
-        op.processLayerCache(pagedV, dstCacheTensor, slotmappings, 1, layerId, page2L);
+        op.processLayerCache(pagedV, dstCacheTensor, slotmappings, 1, layerIdx, page2L);
     }
 }
 

@@ -40,7 +40,7 @@ function build_securec() {
 	local securec_lib=${securec_dir}/build/securec/lib
 	mkdir -p ${securec_lib}
 	mkdir -p ${Lib_PATH}/securec
-	cd ${securec_lib}
+	cd ${securec_dir}
 	if [ "${ARCH}" = "aarch64" ]; then
 		make -f aarch64-so.mk
 	else
@@ -62,7 +62,7 @@ function build_libzmq() {
 	./configure --prefix=`pwd`/build
 	make -j4
 	make install
-	cp -rdp build/build ${Lib_PATH}/libzmq
+	cp -rdp build/include ${Lib_PATH}/libzmq
 	cp -rdp build/lib ${Lib_PATH}/libzmq
 	cd -
 }
@@ -79,9 +79,11 @@ function build_program() {
 	
 	if [ ${npu} -eq 1 ]; then
 		EXTRA_FLAGS="-DPYTHON_PATH=${python_path} -DTORCH_PATH=${torch_path} -DTORCH_NPU_PATH=${torch_npu_path} \
-			-DASCEND_CANN_PACKAGE_PATH=${ascend_home_path} -DSOC_VERSION=${soc_version} -DPYTHON_VERSION=${python_version} -DNPU=ON"
+					-DASCEND_CANN_PACKAGE_PATH=${ascend_home_path} -DSOC_VERSION=${soc_version} \
+					-DPYTHON_VERSION=${python_version} -DNPU=ON"
 	elif [ ${npu} -eq 2 ]; then
-		EXTRA_FLAGS="-DASCEND_CANN_PACKAGE_PATH=${ascend_home_path} -DSOC_VERSION=${soc_version} -DNPUSDK=ON"
+		EXTRA_FLAGS="-DASCEND_CANN_PACKAGE_PATH=${ascend_home_path} -DSOC_VERSION=${soc_version} \
+					-DNPUSDK=ON"
 	else
 		EXTRA_FLAGS=""
 	fi
@@ -102,7 +104,7 @@ function main() {
 	local PARAMETER="$2"
 	
 	if [ "${ACTION}" == "prepare" ]; then
-		prepare_third_party
+		prepare_thirdparty
 	fi
 	if [ "$ACTION" == "build" ]; then
 		build_program $PARAMETER

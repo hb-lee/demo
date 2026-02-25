@@ -33,7 +33,7 @@ def striding_block_hashes(
     block_hashes: list[bytes],
     blocks_in_chunk,
 ) -> Iterable[bytes]:
-    """ Striding the block hashes to get the block hashes for each chunk,
+    """ Striding the block hashes to get the block hashes for each chunk.
     For example, if blocks_in_chunk is 16, then we will get the block hashes
     for the 16th, 32nd, 48th, ... blocks.
     """
@@ -141,9 +141,9 @@ class WorkerAdapter(object):
 
     def _block_hashes_to_keys(
         self, block_hashes: list[bytes]
-    ):
+    ) -> list[bytes]:
         """Convert block hashes to IPC cache engine keys"""
-        s = striding_block_hashes(block_hashes, self.block_in_chunk)
+        s = striding_block_hashes(block_hashes, self.blocks_in_chunk)
         return [block_hash for block_hash in s]
 
     def register(self, kv_caches: dict[str, torch.Tensor]):
@@ -162,11 +162,11 @@ class WorkerAdapter(object):
         head_size = kv_tensor[0].shape[3]
         element_size = kv_tensor[0].element_size()
 
-        logger.debug("num_blocks:%d,block_size:%d,num_heads:%d,head_size:%d,element_size:%d",
-            num_blocks, block_size, num_heads, head_size, element_size)
+        logger.debug("num_blocks:%d,block_size:%d,num_heads:%d,head_size:%d,element_size:%d", num_blocks, block_size,
+                     num_heads, head_size, element_size)
 
-        payloads = to_register_payloads(self.instance_id, self.world_size, self.worker_id, num_blocks, block_size, num_heads, head_size,
-                        element_size, num_heads * head_size, 64, self.model_name, kv_caches_ptrs)
+        payloads = to_register_payloads(self.instance_id, self.world_size, self.worker_id, num_blocks, block_size,
+                                        element_size, num_heads * head_size, 64, self.model_name, kv_caches_ptrs)
         future = self.mq_client.submit_request(
             RequestType.REGISTER_KV_CACHE, payloads
         )

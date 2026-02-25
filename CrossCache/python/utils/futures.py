@@ -5,6 +5,7 @@ import threading
 
 T = TypeVar("T")
 
+
 class MessagingFuture(Generic[T]):
     def __init__(self):
         self.is_done_ = threading.Event()
@@ -24,7 +25,7 @@ class MessagingFuture(Generic[T]):
         Wait for the future to be done.
 
         Args:
-            timeout (Optional[float]): Maximum time to wait in seconds).
+            timeout (Optional[float]): Maximum time to wait in seconds.
                 If None, wait indefinitely.
 
         Returns:

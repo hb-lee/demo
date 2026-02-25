@@ -7,32 +7,32 @@ if(DEFINED NPU)
     message("CANN_PACKAGES_PATH is ${ASCEND_CANN_PACKAGE_PATH}")
 
     if(EXISTS ${ASCEND_CANN_PACKAGE_PATH}/tools/tikcpp/ascendc_kernel_cmake)
-        set(ASCEND_CMAKE_DIR ${ASCEND_CANN_PACKAGE_PATH}/tools/tikcpp/ascendc_kernel_cmake)
+        set(ASCENDC_CMAKE_DIR ${ASCEND_CANN_PACKAGE_PATH}/tools/tikcpp/ascendc_kernel_cmake)
     elseif(EXISTS ${ASCEND_CANN_PACKAGE_PATH}/compiler/tikcpp/ascendc_kernel_cmake)
-        set(ASCEND_CMAKE_DIR ${ASCEND_CANN_PACKAGE_PATH}/compiler/tikcpp/ascendc_kernel_cmake)
+        set(ASCENDC_CMAKE_DIR ${ASCEND_CANN_PACKAGE_PATH}/compiler/tikcpp/ascendc_kernel_cmake)
     elseif(EXISTS ${ASCEND_CANN_PACKAGE_PATH}/ascendc_devkit/tikcpp/samples/cmake)
-        set(ASCEND_CMAKE_DIR ${ASCEND_CANN_PACKAGE_PATH}/ascendc_devkit/tikcpp/samples/cmake)
+        set(ASCENDC_CMAKE_DIR ${ASCEND_CANN_PACKAGE_PATH}/ascendc_devkit/tikcpp/samples/cmake)
     else()
         message(FATAL_ERROR "ascendc_kernel_cmake does not exist, please check whether the cann package is installed.")
     endif()
 
-    message("ASCEND_CMAKE_DIR: ${ASCEND_CMAKE_DIR}")
+    message("ASCENDC_CMAKE_DIR is ${ASCENDC_CMAKE_DIR}")
 endif()
 
 if(DEFINED NPU)
     file(GLOB DEVICE_SRCS
         "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
-        "{CMAKE_CURRENT_SOURCE_DIR}/npu/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/npu/*.cpp"
     )
 elseif(DEFINED NPUSDK)
     file(GLOB DEVICE_SRCS
         "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
-        "{CMAKE_CURRENT_SOURCE_DIR}/npu_sdk/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/npu_sdk/*.cpp"
     )
 else()
     file(GLOB DEVICE_SRCS
         "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp"
-        "{CMAKE_CURRENT_SOURCE_DIR}/mem/*.cpp"
+        "${CMAKE_CURRENT_SOURCE_DIR}/mem/*.cpp"
     )
 endif()
 

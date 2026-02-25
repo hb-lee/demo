@@ -39,7 +39,7 @@ class MessageQueueClient:
         self.sender = threading.Thread(target=self._sender_loop, daemon=True)
         self.receiver = threading.Thread(target=self._receiver_loop, daemon=True)
 
-        # Pending jobs'futures
+        # Pending jobs' futures
         self.pending_futures: dict[int, MessagingFuture[Any]] = {}
         self.pending_id = 0
         self.pending_lock = threading.Lock()
@@ -49,7 +49,7 @@ class MessageQueueClient:
     def _sender_loop(self):
         while not self.is_finished.is_set():
             with self.sender_condition:
-                if self.sender_queue.empyt():
+                if self.sender_queue.empty():
                     self.sender_condition.wait()
 
             try:
@@ -61,8 +61,7 @@ class MessageQueueClient:
                         self.pending_futures[request_uid] = wrapped_request.future
 
                     b_payloads = encode_message(
-                        wrapped_request.request_type, request_uid,
-                        wrapped_request.request_payloads)
+                        wrapped_request.request_type, request_uid, wrapped_request.request_payloads)
                     self.socket.send(b_payloads)
 
             except queue.Empty:
@@ -85,10 +84,10 @@ class MessageQueueClient:
 
     def submit_request(
         self,
-        result_type: RequestType,
+        request_type: RequestType,
         request_payloads: list[Any],
     ) -> MessagingFuture[T]:
-        '''
+        """
         Submit a request to the server.
 
         Args:
@@ -97,7 +96,7 @@ class MessageQueueClient:
 
         Returns:
             MessagingFuture[T]: A future that will hold the response.
-        '''
+        """
         future: MessagingFuture[T] = MessagingFuture()
         self.sender_queue.put(
             MessageQueueClient.WrappedRequest(
@@ -107,7 +106,6 @@ class MessageQueueClient:
                 request_payloads=request_payloads,
             )
         )
-
         with self.sender_condition:
             self.sender_condition.notify()
         return future

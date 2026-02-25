@@ -1,5 +1,5 @@
 build/
-pytho9n/
+python/
 *.a
 *.so
 *.patch

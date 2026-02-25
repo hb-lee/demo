@@ -2,7 +2,7 @@
 
 ### Dependency Matrix
 
-= vllm: v0.11.2
+- vllm: v0.11.2
 - vllm-ascend: 2b82320b
 - torch_npu: 2.7.1
 - CANN: 8.5.0
@@ -47,7 +47,7 @@ python3 setup.py build_ext --inplace
 ##### Run the crosscache
 
 ```
-Now, we provide one demo call fake_client.py
+Now, we provide one demo call fake_client.py.
 
 - run server
 bin/crosscache
@@ -84,7 +84,7 @@ cp python/crosscache_connector.py ${VLLM_SRC}/vllm/distributed/kv_transfer/kv_co
 
 ```sh
 export VLLM_LOGGING_LEVEL=DEBUG
-vllm serve /workerspace/models/qwen-2.5_7B_Instruct --no-enable-prefix-cacheing --gpu-memory-utilization 0.8 --kv-transfer-config '{"kv_connector":"CrossCacheConnector", "kv_role":"kv_both", "kv_connector_extra_config": {"cache.server.host": "tcp://127.0.0.1", "cache.server.port": 5555}}'
-vllm serve /workerspace/models/qwen-2.5_7B_Instruct --no-enable-prefix-cacheing --gpu-memory-utilization 0.8 --kv-transfer-config '{"kv_connector":"CrossCacheConnector", "kv_role":"kv_both", "kv_connector_extra_config": {"cache.server.host": "tcp://127.0.0.1", "cache.server.port": 5555}}' --host 0.0.0.0 --port 9000
+vllm serve /workspace/models/qwen-2.5_7B_Instruct --no-enable-prefix-caching --gpu-memory-utilization 0.8 --kv-transfer-config '{"kv_connector":"CrossCacheConnector", "kv_role":"kv_both", "kv_connector_extra_config": {"cache.server.host": "tcp://127.0.0.1", "cache.server.port": 5555}}'
+vllm serve /workspace/models/qwen-2.5_7B_Instruct --no-enable-prefix-caching --gpu-memory-utilization 0.8 --kv-transfer-config '{"kv_connector":"CrossCacheConnector", "kv_role":"kv_both", "kv_connector_extra_config": {"cache.server.host": "tcp://127.0.0.1", "cache.server.port": 5555}}' --host 0.0.0.0 --port 9000
 
 ```

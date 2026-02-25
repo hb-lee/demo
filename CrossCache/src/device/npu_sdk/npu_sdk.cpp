@@ -50,7 +50,7 @@ void* NPUSDKAdaptor::AllocPinnedPtr(uint8_t nid, uint64_t size, unsigned int fla
     aclError err;
 
     if (size % 4096) {
-        log_error("nid(%u) alloc addr size should be 4k-aligned, now is:%lu", size);
+        log_error("device(%u) alloc pin addr size should be 4k-aligned, now is:%lu", size);
         return NULL;
     }
     err = aclrtSetDevice(nid);
@@ -61,7 +61,7 @@ void* NPUSDKAdaptor::AllocPinnedPtr(uint8_t nid, uint64_t size, unsigned int fla
     /* Allocate the locked memory */
     addr = mmap(NULL, size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0);
     if (addr == MAP_FAILED) {
-        log_error("device(%u) alloc pin addr failed, size:%u, errno:%d", nid, size, errno);
+        log_error("device(%u) alloc pin addr failed, size:%lu, errno:%d", nid, size, errno);
         return NULL;
     }
     buf = (char *)addr;
@@ -187,7 +187,7 @@ int NPUSDKAdaptor::TransferKVCache(struct transfer_params *params)
             cpos = layerIdx * params->num_tokens * copy_len
                 + tokenIdx * copy_len;
 
-            slot = slotmapping[tokenIdx];
+            slot = slotmaping[tokenIdx];
             ppos = slot * copy_len;
             if (params->direction) {
                 err = aclrtMemcpy(caches + cpos, copy_len, (uint8_t *)key_ptrs[layerIdx] + ppos, copy_len, ACL_MEMCPY_DEVICE_TO_HOST);
@@ -196,7 +196,7 @@ int NPUSDKAdaptor::TransferKVCache(struct transfer_params *params)
                     return -1;
                 }
                 out_str += std::string("K:") + std::to_string(ppos) + std::string("-") + std::to_string(ppos + copy_len) +
-                    std::string("->") + std::string(cpos) + std::string("-") + std::to_string(cpos + copy_len) + std::string(" ");
+                    std::string("->") + std::to_string(cpos) + std::string("-") + std::to_string(cpos + copy_len) + std::string(" ");
             } else {
                 err = aclrtMemcpy((uint8_t *)key_ptrs[layerIdx] + ppos, copy_len, caches + cpos, copy_len, ACL_MEMCPY_HOST_TO_DEVICE);
                 if (err != ACL_SUCCESS) {
@@ -204,13 +204,13 @@ int NPUSDKAdaptor::TransferKVCache(struct transfer_params *params)
                     return -1;
                 }
                 out_str += std::string("K:") + std::to_string(cpos) + std::string("-") + std::to_string(cpos + copy_len) +
-                    std::string("->") + std::string(ppos) + std::string("-") + std::to_string(ppos + copy_len) + std::string(" ");
+                    std::string("->") + std::to_string(ppos) + std::string("-") + std::to_string(ppos + copy_len) + std::string(" ");
             }
             /* copy value cache if needed */
             if (val_ptrs) {
                 cpos += params->num_layers * params->num_tokens * copy_len;
                 if (params->direction) {
-                    err = aclrtMemcpy(caches + cpos, (uint8_t *)val_ptrs[layerIdx] + ppos, copy_len, ACL_MEMCPY_DEVICE_TO_HOST);
+                    err = aclrtMemcpy(caches + cpos, copy_len, (uint8_t *)val_ptrs[layerIdx] + ppos, copy_len, ACL_MEMCPY_DEVICE_TO_HOST);
                     if (err != ACL_SUCCESS) {
                         log_error("device(%u) aclrt memcpy failed, err:%d", params->devid, err);
                         return -1;
@@ -218,12 +218,12 @@ int NPUSDKAdaptor::TransferKVCache(struct transfer_params *params)
                     out_str += std::string("V:") + std::to_string(ppos) + std::string("-") + std::to_string(ppos + copy_len) +
                         std::string("->") + std::to_string(cpos) + std::string("-") + std::to_string(cpos + copy_len) + std::string(" ");
                 } else {
-                    err = aclrtMemcpy((uint8_t *)val_ptrs[layerIdx] + ppos, caches + cpos, copy_len);
+                    err = aclrtMemcpy((uint8_t *)val_ptrs[layerIdx] + ppos, copy_len, caches + cpos, copy_len, ACL_MEMCPY_HOST_TO_DEVICE);
                     if (err != ACL_SUCCESS) {
                         log_error("device(%u) aclrt memcpy failed, err:%d", params->devid, err);
                         return -1;
                     }
-                    out_str += std::string("V:") + std::to_string(cpos) + std::string("-") + std::string(cpos + copy_len) +
+                    out_str += std::string("V:") + std::to_string(cpos) + std::string("-") + std::to_string(cpos + copy_len) +
                         std::string("->") + std::to_string(ppos) + std::string("-") + std::to_string(ppos + copy_len) + std::string(" ");
                 }
             }

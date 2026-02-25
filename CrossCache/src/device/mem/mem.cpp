@@ -121,7 +121,7 @@ int MemAdaptor::TransferKVCache(struct transfer_params *params)
     std::string out_str;
 
     caches = (uint8_t *)params->caches;
-    key_ptrs = (uint64_t *)params->key_ptrs;
+    key_ptrs = (uint64_t *)params->keys_ptrs;
     val_ptrs = (uint64_t *)params->value_ptrs;
     slotmaping = (int64_t *)params->slot_mapping;
 
@@ -141,7 +141,7 @@ int MemAdaptor::TransferKVCache(struct transfer_params *params)
             cpos = layerIdx * params->num_tokens * copy_len
                 + tokenIdx * copy_len;
 
-            slot = slotmapping[tokenIdx];
+            slot = slotmaping[tokenIdx];
             ppos = slot * copy_len;
             if (params->direction) {
                 memcpy(caches + cpos, (uint8_t *)key_ptrs[layerIdx] + ppos, copy_len);

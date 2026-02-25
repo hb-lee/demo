@@ -272,7 +272,7 @@ int read_from_file(struct cache_key *key, void *buffer, uint32_t osize)
     }
 
     ret = read(fd, buffer, osize);
-    log_debug("read to disk keypath:%s, osize:%u, wsize:%lld, err:%d", filename, osize, ret, (osize != ret) ? errno : 0);
+    log_debug("read to disk keypath:%s, osize:%u, rsize:%lld, err:%d", filename, osize, ret, (osize != ret) ? errno : 0);
     close(fd);
     return 0;
 }
