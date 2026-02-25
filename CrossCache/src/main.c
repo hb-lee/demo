@@ -440,7 +440,7 @@ static struct option long_options[] =
 
 static void usage(int argc, char **argv)
 {
-    printf("Usage: %s [options]\n", argv[0]);
+    printf("Usage: %s [OPTIONS]\n", argv[0]);
     printf("Options:\n");
     printf("  -h, --help                   Print this help message\n");
     printf("  -P, --port <port>            Specify the listening port (default: 5555)\n");

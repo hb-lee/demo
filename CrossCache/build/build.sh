@@ -67,7 +67,7 @@ function build_libzmq() {
 	cd -
 }
 
-function prepare_third_party() {
+function prepare_thirdparty() {
 	build_jsoncpp
 	build_zlog
 	build_securec

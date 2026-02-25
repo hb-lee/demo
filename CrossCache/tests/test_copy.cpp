@@ -200,8 +200,8 @@ static int parse_options(int argc, char **argv)
         fprintf(stderr, "chunk size needs multiple of block size\n");
         return -EINVAL;
     }
-    if (g_config.num_layers < 1) {
-        fprintf(stderr, "layer is smaller than 2\n");
+    if (g_config.num_layer < 2) {
+        fprintf(stderr, "layers is smaller than 2\n");
         return -EINVAL;
     }
 

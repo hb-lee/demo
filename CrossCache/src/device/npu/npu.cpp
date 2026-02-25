@@ -235,7 +235,7 @@ int NPUAdaptor::TransferKVCache(struct transfer_params *params)
     // using double buffs mean we actually want to allocate half of this per round.
     int64_t singlePerLoopBuffer = totalPerLoopBuffer / numBuffsOnDev;
     log_debug("(device:%u) ops param:kptrs:0x%llx,slotmapping:0x%llx,caches:0x%llx,hdim:%d,psize:%ld,tokens:%d,loopBuffer:%d,perToken:%d,basebuffersize:%u,ubsize:%ld",
-        params->devid, (void *)key_ptrs, (void *)slot_mapping_ptr, (void *)caches, hidden_dims, page_buffer_size, num_tokens, singlePerLoopBuffer, maxTokensPerLoop, baseBufferSize, ubSize);
+        params->devid, (void *)key_ptrs, (void *)slot_mapping_ptr, (void *)caches, hidden_dims, page_buffer_size, num_tokens, singlePerLoopBuffer, maxTokensPerLoop, baseBuffSize, ubSize);
     kvcache_ops::multi_layer_kv_transfer_kernel_v2(aiv_num, stream, key_ptrs, value_ptrs, caches,
                             slot_mapping_ptr, hidden_dims, num_layers, page_buffer_size, num_tokens,
                             singlePerLoopBuffer, maxTokensPerLoop, direction);

@@ -62,7 +62,7 @@ Change as following:
 
 ```python
 # add to vllm/distributed/kv_transfer/kv_connector/factory.py
-KVConnectorFactor.register_connector(
+KVConnectorFactory.register_connector(
 	"CrossCacheConnector",
 	"vllm.distributed.kv_transfer.kv_connector.v1.crosscache.crosscache_connector",
 	"CrossCacheConnector",
@@ -73,7 +73,7 @@ KVConnectorFactor.register_connector(
 mkdir ${VLLM_SRC}/vllm/distributed/kv_transfer/kv_connector/v1/crosscache
 cp -r python/utils ${VLLM_SRC}/vllm/distributed/kv_transfer/kv_connector/v1/crosscache
 cp python/__init__.py ${VLLM_SRC}/vllm/distributed/kv_transfer/kv_connector/v1/crosscache
-cp python/ipkey_utils.c* ${VLLM_SRC}/vllm/distributed/kv_transfer/kv_connector/v1/crosscache
+cp python/ipckey_utils.c* ${VLLM_SRC}/vllm/distributed/kv_transfer/kv_connector/v1/crosscache
 cp python/adaptor.py ${VLLM_SRC}/vllm/distributed/kv_transfer/kv_connector/v1/crosscache
 cp python/crosscache_connector.py ${VLLM_SRC}/vllm/distributed/kv_transfer/kv_connector/v1/crosscache
 ```
@@ -84,7 +84,7 @@ cp python/crosscache_connector.py ${VLLM_SRC}/vllm/distributed/kv_transfer/kv_co
 
 ```sh
 export VLLM_LOGGING_LEVEL=DEBUG
-vllm serve /workspace/models/qwen-2.5_7B_Instruct --no-enable-prefix-caching --gpu-memory-utilization 0.8 --kv-transfer-config '{"kv_connector":"CrossCacheConnector", "kv_role":"kv_both", "kv_connector_extra_config": {"cache.server.host": "tcp://127.0.0.1", "cache.server.port": 5555}}'
-vllm serve /workspace/models/qwen-2.5_7B_Instruct --no-enable-prefix-caching --gpu-memory-utilization 0.8 --kv-transfer-config '{"kv_connector":"CrossCacheConnector", "kv_role":"kv_both", "kv_connector_extra_config": {"cache.server.host": "tcp://127.0.0.1", "cache.server.port": 5555}}' --host 0.0.0.0 --port 9000
+vllm serve /workspace/models/qwen2.5_7B_Instruct --no-enable-prefix-caching --gpu-memory-utilization 0.8 --kv-transfer-config '{"kv_connector":"CrossCacheConnector", "kv_role":"kv_both", "kv_connector_extra_config": {"cache.server.host": "tcp://127.0.0.1", "cache.server.port": 5555}}'
+vllm serve /workspace/models/qwen2.5_7B_Instruct --no-enable-prefix-caching --gpu-memory-utilization 0.8 --kv-transfer-config '{"kv_connector":"CrossCacheConnector", "kv_role":"kv_both", "kv_connector_extra_config": {"cache.server.host": "tcp://127.0.0.1", "cache.server.port": 5555}}' --host 0.0.0.0 --port 9000
 
 ```

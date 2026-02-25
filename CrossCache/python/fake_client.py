@@ -38,9 +38,8 @@ class FakeConnector(object):
 
     def dump_info(self, op):
         print("======== %s ======" % op)
-        print("nid:%d, wsize:%d rid:%d, nblock:%d, bsize:%d, dimsize:%d mname:%s" %
-              (self.instance_id, self.world_size, self.rank_id, self.num_blocks, self.block_size,
-        self.hidden_dim_size, self.model_name))
+        print("nid:%d, wsize:%d, rid:%d, nblocks:%d, bsize:%d, dimsize:%d mname:%s" %
+              (self.instance_id, self.world_size, self.rank_id, self.num_blocks, self.block_size, self.hidden_dim_size, self.model_name))
 
     def get_kv_cache_ptrs(self, kvcaches: dict[str, tuple[torch.Tensor, ...]]) -> tuple[list[tuple[bytes, ...]], int]:
         kv_caches_ptrs: list[tuple[bytes, ...]] = []

@@ -517,7 +517,7 @@ class CrossCacheConnector(KVConnectorBase_V1):
         num_cache_blocks = ret // self.vllm_block_size
         tracker.increase_num_stored_blocks(num_cache_blocks)
 
-        # Save the vllm and lmcache hit tokens
+        # Save the vllm and cache hit tokens
         tracker.num_vllm_hit_blocks = num_vllm_blocks
         tracker.num_cache_hit_blocks = num_cache_blocks
 

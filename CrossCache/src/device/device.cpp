@@ -1,6 +1,6 @@
 #include "adaptor.h"
 
-void *alloc_pinned_ptr(adaptor_t *adaptor uint8_t nid, uint64_t size, unsigned int flags, void **daddr)
+void *alloc_pinned_ptr(adaptor_t *adaptor, uint8_t nid, uint64_t size, unsigned int flags, void **daddr)
 {
     return adaptor->AllocPinnedPtr(nid, size, flags, daddr);
 }
